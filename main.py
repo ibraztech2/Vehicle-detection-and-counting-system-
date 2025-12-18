@@ -3,31 +3,48 @@ import json
 import cv2 as cv
 import numpy as np
 from ultralytics import YOLO
-import time
 import random
-
-from bytetrack import yolox
+import argparse
+import  subprocess
 from bytetrack.yolox.tracker.byte_tracker import BYTETracker
+import gdown
 
 
-def video_reader(path, model):
+def get_asset(video_path):
+    if not video_path:
+        url = "https://drive.google.com/file/d/1cBq6FCT8Hag2TaQXIhlgZOh0vYDDVO82/view?usp=sharing"
+        video_path = "Datasets/ikeja.mp4"
+        gdown.download(url, video_path, quiet=False)  # Download a default video
+    model  = YOLO("yolov5nu.pt")
+    return video_path
+
+
+def video_reader(video_path):
     global tracker
-    cap = cv.VideoCapture(path)
-    map_list = ("car",)
+
+    video_path = get_asset(video_path)
+    cap = cv.VideoCapture(video_path)
+    map_list = ("car",)  # items of concern
 
     height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
-    frame_rate =   int(cap.get(cv.CAP_PROP_FPS))
+    frame_rate = int(cap.get(cv.CAP_PROP_FPS))
     width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
-    bounding_color_dict = {0: (0, 255, 0)}  # store bounding box color for each ID
-
-    tracker = BYTETracker(args, frame_rate=frame_rate)
     fourcc = cv.VideoWriter_fourcc(*"XVID")
-    out = cv.VideoWriter("output_path.avi", fourcc, 30, (width, height), isColor=True)
+
+    out_filename = video_path.split("\\")[-1].split(".")[0]
+    output_path = os.path.join("output", f"tracked_{out_filename}.avi")
+    out = cv.VideoWriter(output_path, fourcc, 30, (width, height), isColor=True)
+
+    model_path = r"yolov5nu.pt"
+    model = YOLO(model_path)
+    tracker = BYTETracker(args, frame_rate=frame_rate)
+    bounding_color_dict = {0: (0, 255, 0)}  # store bounding box color for each ID
 
     while True:
         if cv.waitKey(1) & 0xFF == ord("q"):
             break
         if cap.isOpened():
+
             ret, frame = cap.read()
             detection_shape_holder = []
             label_info = []
@@ -43,7 +60,6 @@ def video_reader(path, model):
                         x1, y1, w, h = tuple(map(int, tlwh))
                         x2, y2 = x1 + w, y1 + h
 
-
                         bounding_shapes = [
                             [x1, y1],
                             [x2, y2],
@@ -58,12 +74,12 @@ def video_reader(path, model):
                         print(f"{label} {int(track_id)} -> {t_score:.2f}")
                     frame = annotate_func(detection_shape_holder, label_info, frame, bounding_color_dict)
 
-                    
                     cv.imshow("video", frame)
                     out.write(frame)
 
     cap.release()
     cv.destroyAllWindows()
+    return output_path
 
 
 def annotate_func(bounding_shapes, label_info, frame, bounding_color_dict) -> np.array:
@@ -87,14 +103,14 @@ def predict_func(model: YOLO, frames: np.array) -> list:
         image_shape = prediction.orig_shape
         class_names = prediction.names
         detetction_container = prediction.boxes
-        
+
         # extract detection  details from the container 
-        conf = detetction_container.conf.cpu().numpy().reshape(-1, 1)  
+        conf = detetction_container.conf.cpu().numpy().reshape(-1, 1)
         labels = detetction_container.cls.cpu().numpy()
         labels = [class_names[label] for label in labels]
         bboxes = detetction_container.xyxy.cpu().numpy()
 
-        detection = np.concatenate((bboxes, conf), axis=1) # Format ByteTreack expect
+        detection = np.concatenate((bboxes, conf), axis=1)  # Format ByteTreack expect
         online_targets = tracker.update(detection, image_shape, image_shape)  # ByteTracker
         # online_targets = tracker.update(prediction)  # Deepsorttracker
         tracking_details = [(t.track_id, t.tlwh, t.score) for t in online_targets]
@@ -112,12 +128,13 @@ def detection_to_jason(detection_list):
         json.dump(detection_list, f)
         print("save result succesfully")
 
+
 # Generate Unique Color for each Bounding Box
-def bounding_color_gen(track_id, bounding_color_dict): 
+def bounding_color_gen(track_id, bounding_color_dict):
     if len(bounding_color_dict) > 0:
         if track_id in bounding_color_dict.keys():
             b_, g_, r_ = bounding_color_dict[track_id][0], bounding_color_dict[track_id][1], \
-            bounding_color_dict[track_id][2]
+                bounding_color_dict[track_id][2]
             return b_, g_, r_
         else:
             b_, g_, r_, = random.randint(0, 256), random.randint(0, 256), random.randint(0, 256)
@@ -129,22 +146,37 @@ def bounding_color_gen(track_id, bounding_color_dict):
     return None
 
 
+
+def rewrite_format(video_filename):
+
+    new_filename = video_filename.replace('.avi', '.mp4')
+    command = f"ffmpeg -i {video_filename} {new_filename} \nrm {video_filename}"
+    subprocess.call(command, shell=True,)
+    os.remove(video_filename)
+
+
+def argparser_func():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--video_path")
+    args = parser.parse_args()
+    video_path = args.video_path
+    output_path = video_reader(video_path)
+    rewrite_format(output_path)
+
+
 # ByteTrack Argument
 class Args:
     track_buffer = 30
     match_thresh = 0.80
     track_thresh = 0.55
-    mot20 = True # multiple object detector for Crowded scene
+    mot20 = True  # multiple object detector for Crowded scene
 
 
 args = Args()
 frame_rate = None
-path = "Datasets/ikeja.mp4"
-model_path = "Checkpoints/yolo12n.pt"
 tracker = None
 
 #tracker = DeepSortTracker(metric_name="euclidean", max_iou_distance=0.8, max_age=30, n_init= 3, max_dist=0.2, nn_budget=100)
 
 if __name__ == "__main__":
-    model = YOLO(model_path)
-    video_reader(path, model)
+    argparser_func()
