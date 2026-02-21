@@ -5,6 +5,7 @@ Ultralytics
 numpy
 opencv_python
 loguru
+tqdm
 torchvision>=0.10.0
 Pillow
 ninja
