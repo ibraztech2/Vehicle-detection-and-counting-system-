@@ -32,7 +32,8 @@ def video_reader(video_path):
     width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
     fourcc = cv.VideoWriter_fourcc(*"XVID")
 
-    out_filename = video_path.split("\\")[-1].split(".")[0]
+    out_filename = video_path.split("/")[-1].split(".")[0]
+    
     output_path = os.path.join("output", f"tracked_{out_filename}.avi")
     out = cv.VideoWriter(output_path, fourcc, 30, (width, height), isColor=True)
 
@@ -76,6 +77,7 @@ def video_reader(video_path):
                     frame = annotate_func(detection_shape_holder, label_info, frame, bounding_color_dict)
 
                     cv.imshow("video", frame)
+                    print(out_filename)
                     out.write(frame)
 
     cap.release()
@@ -90,7 +92,7 @@ def annotate_func(bounding_shapes, label_info, frame, bounding_color_dict) -> np
             track_id = label["track_id"]
             b_, g_, r_ = bounding_color_gen(track_id, bounding_color_dict)
             frame = cv.rectangle(frame, bounding_shapes[idx][0], bounding_shapes[idx][1], (b_, g_, r_), 2, cv.LINE_AA, )
-            frame = cv.putText(frame, label["text"], label["pos"], cv.FONT_HERSHEY_SIMPLEX, 0.5, (250, 0, 0), 1)
+            frame = cv.putText(frame, label["text"], label["pos"], cv.FONT_HERSHEY_SIMPLEX, 0.5, (250, 255, 255), 1)
 
     return frame
 
@@ -161,7 +163,7 @@ def argparser_func():
     args = parser.parse_args()
     video_path = args.video_path
     output_path = video_reader(video_path)
-    rewrite_format(output_path)
+    #rewrite_format(output_path)
 
 
 # ByteTrack Argument
